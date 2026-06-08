@@ -1,0 +1,500 @@
+//This program create by TechChip
+//ESP32 BLE HID
+#include <Wire.h>
+#include <SPIFFS.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <Fonts/FreeSansBold12pt7b.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+#include <BleKeyboard.h>
+
+#define BUTTON_1_PIN 15 // Trigger 1
+#define BUTTON_2_PIN 5 // Trigger 2
+int selectedOption = 0;
+int topMenuItem = 0;
+const int TYPE_DELAY = 20;
+const char* menuItems[] = {
+  "Windows",
+  "Android",
+  "iPhone",
+  "Custom"
+};
+
+const int MENU_COUNT = 4;
+const int VISIBLE_ITEMS = 4;
+
+char kbd[] = "ESP Keyboard"; //Device Name
+BleKeyboard bleKeyboard(kbd, "Espressif", 100);
+
+bool lastMenuButton = HIGH;
+bool lastSelectButton = HIGH;
+bool lastState1 = HIGH;
+bool lastState2 = HIGH;
+bool lastState3 = HIGH;
+bool oledConnectedShown = false;
+
+void showMessage(String line1, String line2 = "") {
+  display.clearDisplay();
+  display.drawRect(0, 0, 128, 64, SSD1306_WHITE);
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+  //display.setFont(&FreeSansBold12pt7b);
+  int16_t x1, y1;
+  uint16_t w, h;
+
+  display.getTextBounds(line1, 0, 0, &x1, &y1, &w, &h);
+  display.setCursor((128 - w) / 2, 12);
+  display.println(line1);
+
+  if (line2 != "") {
+    display.getTextBounds(line2, 0, 0, &x1, &y1, &w, &h);
+    display.setCursor((128 - w) / 2, 38);
+    display.println(line2);
+  }
+
+  display.display();
+}
+void runPayload(String filename)
+{
+    File file = SPIFFS.open(filename);
+
+    if(!file)
+    {
+        Serial.println("Payload not found");
+        return;
+    }
+
+    Serial.println("Payload opened");
+
+    while(file.available())
+    {
+        String line = file.readStringUntil('\n');
+        executeLine(line);
+    }
+
+    file.close();
+}
+
+void listFiles()
+{
+    Serial.println("=== SPIFFS Files ===");
+
+    File root = SPIFFS.open("/");
+
+    File file = root.openNextFile();
+
+    while(file)
+    {
+        Serial.print("File: ");
+        Serial.println(file.name());
+
+        file = root.openNextFile();
+    }
+
+    Serial.println("====================");
+}
+
+void drawMenu() {
+
+  display.clearDisplay();
+
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+
+  display.setCursor(0, 0);
+  display.println("Select Target");
+
+  for (int i = 0; i < VISIBLE_ITEMS; i++) {
+
+    int menuIndex = topMenuItem + i;
+
+    if (menuIndex >= MENU_COUNT)
+      break;
+
+    display.setCursor(5, 15 + (i * 12));
+
+    if (menuIndex == selectedOption) {
+      display.print("> ");
+    } else {
+      display.print("  ");
+    }
+
+    display.println(menuItems[menuIndex]);
+  }
+  if (MENU_COUNT > VISIBLE_ITEMS)
+  {
+      int barHeight = (VISIBLE_ITEMS * 48) / MENU_COUNT;
+
+      if (barHeight < 8)
+          barHeight = 8;
+
+      int barY = (topMenuItem * 48) / MENU_COUNT;
+
+      display.drawRect(122, 14, 6, 48, SSD1306_WHITE);
+      display.fillRect(123, 15 + barY, 4, barHeight, SSD1306_WHITE);
+  }
+  display.display();
+}
+
+void setup() {
+  Serial.begin(115200);
+  if(!SPIFFS.begin(true)){
+    Serial.println("SPIFFS Mount Failed");
+    return;
+  }
+  if(!SPIFFS.exists("/windows.txt"))
+  {
+      createPayloads();
+  }
+ // listFiles();
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("SSD1306 allocation failed");
+    for(;;);
+  }
+  
+  showMessage("Welcome !", "Onboard");
+  delay(2000);
+
+  showMessage("Waiting", "for BLE");
+  drawMenu();
+
+  pinMode(BUTTON_1_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_2_PIN, INPUT_PULLUP);
+
+  bleKeyboard.begin();
+}
+void createPayloads()
+{
+    File file;
+
+    file = SPIFFS.open("/windows.txt", FILE_WRITE);
+    file.println("STRING Hello Windows");
+    file.println("ENTER");
+    file.close();
+
+    file = SPIFFS.open("/android.txt", FILE_WRITE);
+    file.println("STRING Hello Android");
+    file.println("ENTER");
+    file.close();
+
+    file = SPIFFS.open("/iphone.txt", FILE_WRITE);
+    file.println("STRING Hello iPhone");
+    file.println("ENTER");
+    file.close();
+
+    file = SPIFFS.open("/custom.txt", FILE_WRITE);
+    file.println("STRING Hello Custom");
+    file.println("ENTER");
+    file.close();
+
+    Serial.println("Payload files created");
+}
+void updateFile(String path)
+{
+    Serial.println("Send payload line by line. Type END to finish:");
+
+    File file = SPIFFS.open(path, FILE_WRITE);
+    if(!file)
+    {
+        Serial.println("Failed to open file");
+        return;
+    }
+
+    while(true)
+    {
+        while(!Serial.available()) delay(10);
+
+        String line = Serial.readStringUntil('\n');
+        line.trim();
+
+        if(line == "END")
+            break;
+
+        file.println(line);
+        Serial.println("Saved: " + line);
+    }
+
+    file.close();
+    Serial.println("File update complete");
+}
+void deleteLine(String path, int lineToDelete)
+{
+    File file = SPIFFS.open(path, FILE_READ);
+    if(!file)
+    {
+        Serial.println("File open failed");
+        return;
+    }
+
+    String newContent = "";
+    int lineNo = 0;
+
+    while(file.available())
+    {
+        String line = file.readStringUntil('\n');
+
+        if(lineNo != lineToDelete)
+        {
+            newContent += line + "\n";
+        }
+
+        lineNo++;
+    }
+
+    file.close();
+
+    // rewrite file
+    File fileWrite = SPIFFS.open(path, FILE_WRITE);
+    fileWrite.print(newContent);
+    fileWrite.close();
+
+    Serial.println("Line deleted successfully");
+}
+
+void clearFile(String path)
+{
+    File file = SPIFFS.open(path, FILE_WRITE);
+    file.close(); // overwrites file with empty content
+    Serial.println("File cleared");
+}
+
+void showFile(String path)
+{
+    File file = SPIFFS.open(path, FILE_READ);
+    if(!file)
+    {
+        Serial.println("Failed to open file");
+        return;
+    }
+
+    int lineNo = 0;
+    Serial.println("---- FILE CONTENT ----");
+
+    while(file.available())
+    {
+        String line = file.readStringUntil('\n');
+        Serial.print(lineNo++);
+        Serial.print(": ");
+        Serial.println(line);
+    }
+
+    file.close();
+    Serial.println("----------------------");
+}
+void executeLine(String line)
+{
+    line.trim();
+
+    if(line.startsWith("REM"))
+        return;
+
+    if(line.startsWith("DELAY "))
+    {
+        int ms = line.substring(6).toInt();
+        delay(ms);
+        return;
+    }
+
+    if(line.startsWith("STRING "))
+    {
+        String txt = line.substring(7);
+
+        for(int i = 0; i < txt.length(); i++)
+        {
+            bleKeyboard.write(txt[i]);
+            delay(TYPE_DELAY);
+        }
+
+        return;
+    }
+
+    if(line.startsWith("NUMBER "))
+    {
+        String num = line.substring(7);
+
+        for(int i = 0; i < num.length(); i++)
+        {
+            char c = num[i];
+
+            // ensure it's a digit
+            if(c >= '0' && c <= '9')
+            {
+                bleKeyboard.write(c);
+                delay(TYPE_DELAY);
+            }
+        }
+        return;
+    }
+
+    if(line == "ENTER")
+
+    {
+        bleKeyboard.write(KEY_RETURN);
+        return;
+    }
+
+    if(line == "TAB")
+    {
+        bleKeyboard.write(KEY_TAB);
+        return;
+    }
+
+    if(line == "ESC")
+    {
+        bleKeyboard.write(KEY_ESC);
+        return;
+    }
+
+    if(line == "SPACE")
+    {
+        bleKeyboard.write(' ');
+        return;
+    }
+    if(line == "UP")
+    {
+        bleKeyboard.write(KEY_UP_ARROW);
+        return;
+    }
+
+    if(line == "DOWN")
+    {
+        bleKeyboard.write(KEY_DOWN_ARROW);
+        return;
+    }
+
+    if(line == "LEFT")
+    {
+        bleKeyboard.write(KEY_LEFT_ARROW);
+        return;
+    }
+
+    if(line == "RIGHT")
+    {
+        bleKeyboard.write(KEY_RIGHT_ARROW);
+        return;
+    }
+
+    if(line == "BACKSPACE")
+    {
+        bleKeyboard.write(KEY_BACKSPACE);
+        return;
+    }
+}
+
+void loop() {
+
+  if (bleKeyboard.isConnected()) {
+    if (!oledConnectedShown) {
+      showMessage("BLE", "Connected");
+      oledConnectedShown = true;
+    }
+
+    bool menuButton   = digitalRead(BUTTON_1_PIN);
+    bool selectButton = digitalRead(BUTTON_2_PIN);
+
+    // -----------------------------
+    // Cycle through options
+    // -----------------------------
+    if (lastMenuButton == HIGH && menuButton == LOW) {
+
+      selectedOption++;
+
+      if (selectedOption >= MENU_COUNT)
+      {
+          selectedOption = 0;
+          topMenuItem = 0;
+      }
+      else
+      {
+          if (selectedOption >= topMenuItem + VISIBLE_ITEMS)
+          {
+              topMenuItem++;
+          }
+      }
+
+      drawMenu();
+      delay(200);
+    }
+     // -----------------------------
+    // Edit Payload
+    // -----------------------------
+    if(Serial.available())
+{
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+
+    if(cmd.startsWith("SHOW "))
+    {
+        String path = cmd.substring(5);
+        showFile(path);
+    }
+
+    else if(cmd.startsWith("CLEAR "))
+    {
+        String path = cmd.substring(6);
+        clearFile(path);
+    }
+
+    else if(cmd.startsWith("DELETE "))
+    {
+        int space1 = cmd.indexOf(' ');
+        int space2 = cmd.indexOf(' ', space1 + 1);
+
+        String path = cmd.substring(space1 + 1, space2);
+        int lineNo = cmd.substring(space2 + 1).toInt();
+
+        deleteLine(path, lineNo);
+    }
+
+    else if(cmd.startsWith("EDIT "))
+    {
+        String path = cmd.substring(5);
+        updateFile(path); // your existing append mode
+    }
+}
+    // -----------------------------
+    // Select option
+    // -----------------------------
+    if (lastSelectButton == HIGH && selectButton == LOW) {
+
+      if(selectedOption == 0)
+      {
+          showMessage("Running", "Windows");
+          runPayload("/windows.txt");
+      }
+      else if(selectedOption == 1)
+      {
+          showMessage("Running", "Android");
+          runPayload("/android.txt");
+      }
+      else if(selectedOption == 2)
+      {
+          showMessage("Running", "iPhone");
+          runPayload("/iphone.txt");
+      }
+      else if(selectedOption == 3)
+      {
+          showMessage("Running", "Custom");
+          runPayload("/custom.txt");
+      }
+      delay(1000);
+      drawMenu();
+    }
+    // Update button states
+    lastMenuButton = menuButton;
+    lastSelectButton = selectButton;
+  }else {
+    if(oledConnectedShown)
+    {
+        oledConnectedShown = false;
+        Serial.println("BLE HID Disconnected");
+        showMessage("Waiting", "for BLE");
+    }
+}
+
+  delay(10);
+}
