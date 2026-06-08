@@ -1,5 +1,4 @@
-//This program create by TechChip
-//ESP32 BLE HID
+//This program create by Breached.tech
 #include <Wire.h>
 #include <SPIFFS.h>
 #include <Adafruit_GFX.h>
